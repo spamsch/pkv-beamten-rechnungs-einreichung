@@ -1,0 +1,29 @@
+[package]
+name = "pkv-tracking"
+version = "0.1.0"
+description = "PKV Invoice Tracking"
+authors = ["Simon Pamies"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2", features = [] }
+tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+rusqlite = { version = "0.34", features = ["bundled"] }
+calamine = { version = "0.33", features = ["dates"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+reqwest = { version = "0.12", features = ["blocking", "json"] }

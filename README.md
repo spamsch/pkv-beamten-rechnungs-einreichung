@@ -61,12 +61,3 @@ src-tauri/                  # Rust backend
 
 Paperless-ngx connection is configured in-app via **Einstellungen** (Settings). Enter your Paperless URL and API token, then use the test button to verify connectivity.
 
-## Persons
-
-Three persons are pre-configured with their insurance split percentages:
-
-| Person   | Beihilfe | Debeka |
-|----------|----------|--------|
-| Johanna  | 70%      | 30%    |
-| Thore    | 80%      | 20%    |
-| Isabella | 80%      | 20%    |

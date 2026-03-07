@@ -60,6 +60,7 @@ pub struct InvoiceFilter {
     pub search: Option<String>,
     pub sort_by: Option<String>,
     pub sort_dir: Option<String>,
+    pub hide_final: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

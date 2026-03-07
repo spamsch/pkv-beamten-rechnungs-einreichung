@@ -105,6 +105,23 @@ export function useDeleteAllInvoices() {
   });
 }
 
+export function useNotes() {
+  return useQuery({
+    queryKey: ["notes"],
+    queryFn: api.getNotes,
+  });
+}
+
+export function useSaveNotes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (content: string) => api.saveNotes(content),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}
+
 export function useImportExcel() {
   const qc = useQueryClient();
   return useMutation({

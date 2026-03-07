@@ -8,6 +8,7 @@ import { InvoiceEditPage } from "./pages/InvoiceEditPage";
 import { ImportPage } from "./pages/ImportPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { PaperlessImportPage } from "./pages/PaperlessImportPage";
+import { NotesPage } from "./pages/NotesPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,6 +32,7 @@ function App() {
             <Route path="/invoices/:id/edit" element={<InvoiceEditPage />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/import/paperless" element={<PaperlessImportPage />} />
+            <Route path="/notes" element={<NotesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>

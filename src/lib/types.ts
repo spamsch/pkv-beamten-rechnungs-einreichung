@@ -54,6 +54,7 @@ export interface InvoiceFilter {
   search?: string | null;
   sort_by?: string | null;
   sort_dir?: string | null;
+  hide_final?: boolean | null;
 }
 
 export interface BatchUpdateInput {

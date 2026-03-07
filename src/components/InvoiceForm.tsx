@@ -94,6 +94,12 @@ export function InvoiceForm({
     await onSubmit(form);
   };
 
+  const applyAndSave = (updates: Partial<InvoiceInput>) => {
+    const updated = { ...form, ...updates };
+    setForm(updated);
+    onSubmit(updated);
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
       {/* Person */}
@@ -254,6 +260,17 @@ export function InvoiceForm({
               }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             />
+            <p className="mt-1 text-xs text-gray-400 flex items-center gap-1">
+              Erwartet: {formatEur(beihilfe_zu)}
+              <button
+                type="button"
+                onClick={() => applyAndSave({ beihilfe_bezahlt: beihilfe_zu })}
+                disabled={isSubmitting}
+                className="text-blue-500 hover:text-blue-700 font-medium"
+              >
+                Übernehmen
+              </button>
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -268,6 +285,17 @@ export function InvoiceForm({
               }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
             />
+            <p className="mt-1 text-xs text-gray-400 flex items-center gap-1">
+              Erwartet: {formatEur(debeka_zu)}
+              <button
+                type="button"
+                onClick={() => applyAndSave({ debeka_bezahlt: debeka_zu })}
+                disabled={isSubmitting}
+                className="text-blue-500 hover:text-blue-700 font-medium"
+              >
+                Übernehmen
+              </button>
+            </p>
           </div>
         </div>
       </section>

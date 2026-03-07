@@ -55,6 +55,8 @@ pub fn run() {
             commands::paperless_get_tags,
             commands::paperless_get_documents,
             commands::paperless_import_documents,
+            commands::get_notes,
+            commands::save_notes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

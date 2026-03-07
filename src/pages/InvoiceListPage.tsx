@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { PlusCircle, CheckSquare } from "lucide-react";
-import type { InvoiceFilter } from "../lib/types";
-import { todayISO } from "../lib/format";
+import { PlusCircle, CheckSquare, ClipboardCopy } from "lucide-react";
+import type { Invoice, InvoiceFilter } from "../lib/types";
+import { deriveStatus, STATUS_CONFIG } from "../lib/types";
+import { todayISO, formatDate, formatEur } from "../lib/format";
 import {
   useInvoices,
   usePersons,
@@ -15,20 +16,56 @@ import { InvoiceTable } from "../components/InvoiceTable";
 
 export function InvoiceListPage() {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<InvoiceFilter>({});
+  const [filter, setFilter] = useState<InvoiceFilter>({ hide_final: true });
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(
+    () => new Set(["rechnungs_nummer", "beihilfe_zu_bezahlen", "debeka_zu_bezahlen"])
+  );
 
   const { data: persons = [] } = usePersons();
   const { data: invoices = [], isLoading } = useInvoices(filter);
   const deleteMutation = useDeleteInvoice();
   const batchMutation = useBatchUpdate();
   const batchEingereichMutation = useBatchMarkEingereicht();
+  const [copied, setCopied] = useState(false);
 
-  const handleBatch = (field: string, value: string) => {
-    if (selectedIds.size === 0) return;
+  const personMap = new Map(persons.map((p) => [p.id, p.name]));
+
+  const copyAsMarkdown = useCallback(() => {
+    const headers = ["#", "Person", "Arzt", "Datum", "Re-Nr.", "Betrag", "Status", "BH eingereicht", "BH soll", "BH ist", "DK soll", "DK ist", "Diff."];
+    const sep = headers.map(() => "---");
+    const rows = invoices.map((inv: Invoice) => [
+      String(inv.id),
+      personMap.get(inv.person_id) ?? inv.person_id,
+      inv.arzt,
+      formatDate(inv.datum),
+      inv.rechnungs_nummer,
+      formatEur(inv.betrag),
+      STATUS_CONFIG[deriveStatus(inv)].label,
+      formatDate(inv.beihilfe_eingereicht),
+      formatEur(inv.beihilfe_zu_bezahlen),
+      formatEur(inv.beihilfe_bezahlt),
+      formatEur(inv.debeka_zu_bezahlen),
+      formatEur(inv.debeka_bezahlt),
+      formatEur(inv.differenz),
+    ]);
+    const lines = [
+      `| ${headers.join(" | ")} |`,
+      `| ${sep.join(" | ")} |`,
+      ...rows.map((r) => `| ${r.join(" | ")} |`),
+    ];
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [invoices, personMap]);
+
+  const handleBatch = (field: string, value: string, ids?: number[]) => {
+    const targetIds = ids ?? Array.from(selectedIds);
+    if (targetIds.length === 0) return;
     batchMutation.mutate(
-      { ids: Array.from(selectedIds), field, value },
-      { onSuccess: () => setSelectedIds(new Set()) }
+      { ids: targetIds, field, value },
+      { onSuccess: () => { if (!ids) setSelectedIds(new Set()); } }
     );
   };
 
@@ -117,13 +154,24 @@ export function InvoiceListPage() {
           invoices={invoices}
           persons={persons}
           onDelete={(id) => deleteMutation.mutate(id)}
+          onMarkFinal={(id) => handleBatch("is_final", "1", [id])}
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
+          hiddenColumns={hiddenColumns}
+          onHiddenColumnsChange={setHiddenColumns}
         />
       )}
 
-      <div className="text-sm text-gray-500">
-        {invoices.length} Rechnung{invoices.length !== 1 ? "en" : ""}
+      <div className="flex items-center gap-3 text-sm text-gray-500">
+        <span>{invoices.length} Rechnung{invoices.length !== 1 ? "en" : ""}</span>
+        <button
+          onClick={copyAsMarkdown}
+          disabled={invoices.length === 0}
+          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+        >
+          <ClipboardCopy size={14} />
+          {copied ? "Kopiert!" : "Als Markdown kopieren"}
+        </button>
       </div>
     </div>
   );

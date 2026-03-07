@@ -147,6 +147,10 @@ impl AppDb {
             }
         }
 
+        if filter.hide_final.unwrap_or(false) {
+            sql.push_str(" AND is_final = 0");
+        }
+
         if let Some(ref status) = filter.status {
             match status.as_str() {
                 "neu" => sql.push_str(

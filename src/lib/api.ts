@@ -57,4 +57,8 @@ export const api = {
       documentIds,
       tagIds,
     }),
+
+  getNotes: () => invoke<string>("get_notes"),
+
+  saveNotes: (content: string) => invoke<void>("save_notes", { content }),
 };

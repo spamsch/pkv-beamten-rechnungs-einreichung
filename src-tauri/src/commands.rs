@@ -87,6 +87,16 @@ pub fn save_settings(db: State<'_, AppDb>, settings: Settings) -> Result<(), App
     Ok(())
 }
 
+#[tauri::command]
+pub fn get_notes(db: State<'_, AppDb>) -> Result<String, AppError> {
+    Ok(db.get_setting("general_notes")?.unwrap_or_default())
+}
+
+#[tauri::command]
+pub fn save_notes(db: State<'_, AppDb>, content: String) -> Result<(), AppError> {
+    db.set_setting("general_notes", &content)
+}
+
 fn build_paperless_client(db: &AppDb) -> Result<PaperlessClient, AppError> {
     let url = db
         .get_setting("paperless_url")?

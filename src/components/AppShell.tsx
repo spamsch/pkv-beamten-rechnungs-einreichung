@@ -5,6 +5,7 @@ import {
   PlusCircle,
   Upload,
   FileDown,
+  StickyNote,
   Settings,
 } from "lucide-react";
 
@@ -14,6 +15,7 @@ const navItems = [
   { to: "/invoices/new", label: "Neue Rechnung", icon: PlusCircle },
   { to: "/import", label: "Excel Import", icon: Upload },
   { to: "/import/paperless", label: "Paperless Import", icon: FileDown },
+  { to: "/notes", label: "Notizen", icon: StickyNote },
 ];
 
 const bottomNavItems = [

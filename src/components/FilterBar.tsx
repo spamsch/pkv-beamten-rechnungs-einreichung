@@ -62,6 +62,18 @@ export function FilterBar({ filter, onChange, persons }: FilterBarProps) {
         ))}
       </select>
 
+      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={filter.hide_final ?? false}
+          onChange={(e) =>
+            onChange({ ...filter, hide_final: e.target.checked || null })
+          }
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        Abgeschlossene ausblenden
+      </label>
+
       <select
         value={`${filter.sort_by || "datum"}:${filter.sort_dir || "DESC"}`}
         onChange={(e) => {

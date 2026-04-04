@@ -4,9 +4,14 @@ import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
+  getSortedRowModel,
+  getGroupedRowModel,
+  getExpandedRowModel,
   useReactTable,
+  type SortingState,
+  type GroupingState,
 } from "@tanstack/react-table";
-import { Pencil, Trash2, ExternalLink, Columns3, ArrowRightLeft } from "lucide-react";
+import { Pencil, Trash2, ExternalLink, Columns3, ArrowRightLeft, ArrowUp, ArrowDown, ArrowUpDown, Group, ChevronRight, ChevronDown } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Invoice, Person } from "../lib/types";
 import { deriveStatus, isOverdue } from "../lib/types";
@@ -29,7 +34,7 @@ const columnHelper = createColumnHelper<Invoice>();
 
 /** All toggleable column IDs with their labels */
 const TOGGLEABLE_COLUMNS: { id: string; label: string }[] = [
-  { id: "id", label: "#" },
+  { id: "paperless_doc_id", label: "PL#" },
   { id: "person_id", label: "Person" },
   { id: "arzt", label: "Arzt" },
   { id: "datum", label: "Datum" },
@@ -44,6 +49,17 @@ const TOGGLEABLE_COLUMNS: { id: string; label: string }[] = [
   { id: "debeka_zu_bezahlen", label: "DK soll" },
   { id: "debeka_bezahlt", label: "DK ist" },
   { id: "differenz", label: "Diff." },
+];
+
+/** Columns available for grouping (non-monetary) */
+const GROUPABLE_COLUMNS: { id: string; label: string }[] = [
+  { id: "person_id", label: "Person" },
+  { id: "arzt", label: "Arzt" },
+  { id: "datum", label: "Datum" },
+  { id: "status", label: "Status" },
+  { id: "next_step", label: "Nächster Schritt" },
+  { id: "beihilfe_eingereicht", label: "BH eingereicht" },
+  { id: "ueberwiesen", label: "Überwiesen" },
 ];
 
 function deriveNextStep(invoice: Invoice): { label: string; color: string } {
@@ -122,6 +138,8 @@ export function InvoiceTable({
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [grouping, setGrouping] = useState<GroupingState>([]);
   const { data: settings } = useSettings();
   const paperlessUrl = settings?.paperless_url;
 
@@ -134,6 +152,7 @@ export function InvoiceTable({
     () => [
       columnHelper.display({
         id: "select",
+        enableSorting: false,
         header: ({ table }) => (
           <input
             type="checkbox"
@@ -170,13 +189,17 @@ export function InvoiceTable({
         ),
         size: 40,
       }),
-      columnHelper.accessor("id", {
-        header: "#",
-        size: 50,
+      columnHelper.accessor("paperless_doc_id", {
+        header: "PL#",
+        enableGrouping: false,
+        aggregatedCell: () => null,
+        cell: (info) => info.getValue() ?? "—",
+        size: 55,
       }),
       columnHelper.accessor("person_id", {
         header: "Person",
         cell: (info) => personMap.get(info.getValue()) ?? info.getValue(),
+        aggregatedCell: (info) => personMap.get(info.getValue() as string) ?? info.getValue(),
         size: 90,
       }),
       columnHelper.accessor("arzt", {
@@ -206,9 +229,12 @@ export function InvoiceTable({
       columnHelper.accessor("betrag", {
         header: "Betrag",
         cell: (info) => formatEur(info.getValue()),
+        enableGrouping: false,
+        aggregationFn: "sum",
+        aggregatedCell: (info) => formatEur(info.getValue() as number),
         size: 100,
       }),
-      columnHelper.display({
+      columnHelper.accessor((row) => row.ueberwiesen_datum ?? "", {
         id: "ueberwiesen",
         header: "Überw.",
         cell: ({ row }) => {
@@ -222,13 +248,13 @@ export function InvoiceTable({
         },
         size: 50,
       }),
-      columnHelper.display({
+      columnHelper.accessor((row) => deriveStatus(row), {
         id: "status",
         header: "Status",
         cell: ({ row }) => <StatusBadge invoice={row.original} />,
         size: 140,
       }),
-      columnHelper.display({
+      columnHelper.accessor((row) => deriveNextStep(row).label, {
         id: "next_step",
         header: "Nächster Schritt",
         cell: ({ row }) => {
@@ -259,6 +285,9 @@ export function InvoiceTable({
       columnHelper.accessor("beihilfe_zu_bezahlen", {
         header: "BH soll",
         cell: (info) => formatEur(info.getValue()),
+        enableGrouping: false,
+        aggregationFn: "sum",
+        aggregatedCell: (info) => formatEur(info.getValue() as number),
         size: 90,
       }),
       columnHelper.accessor("beihilfe_bezahlt", {
@@ -271,11 +300,17 @@ export function InvoiceTable({
             </span>
           );
         },
+        enableGrouping: false,
+        aggregationFn: "sum",
+        aggregatedCell: (info) => formatEur(info.getValue() as number),
         size: 90,
       }),
       columnHelper.accessor("debeka_zu_bezahlen", {
         header: "DK soll",
         cell: (info) => formatEur(info.getValue()),
+        enableGrouping: false,
+        aggregationFn: "sum",
+        aggregatedCell: (info) => formatEur(info.getValue() as number),
         size: 90,
       }),
       columnHelper.accessor("debeka_bezahlt", {
@@ -288,6 +323,9 @@ export function InvoiceTable({
             </span>
           );
         },
+        enableGrouping: false,
+        aggregationFn: "sum",
+        aggregatedCell: (info) => formatEur(info.getValue() as number),
         size: 90,
       }),
       columnHelper.accessor("differenz", {
@@ -308,10 +346,21 @@ export function InvoiceTable({
             </span>
           );
         },
+        enableGrouping: false,
+        aggregationFn: "sum",
+        aggregatedCell: (info) => {
+          const v = info.getValue() as number;
+          return (
+            <span className={v < 0 ? "text-red-600" : v > 0 ? "text-green-600" : "text-gray-500"}>
+              {formatEur(v)}
+            </span>
+          );
+        },
         size: 90,
       }),
       columnHelper.display({
         id: "actions",
+        enableSorting: false,
         header: "",
         cell: ({ row }) => {
           const inv = row.original;
@@ -403,12 +452,36 @@ export function InvoiceTable({
   const table = useReactTable({
     data: invoices,
     columns: visibleColumns,
+    state: { sorting, grouping },
+    onSortingChange: setSorting,
+    onGroupingChange: setGrouping,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getGroupedRowModel: getGroupedRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
   });
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end relative">
+      <div className="flex justify-end gap-2 relative">
+        <div className="flex items-center gap-1">
+          <Group size={14} className="text-gray-500" />
+          <select
+            value={grouping[0] ?? ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              setGrouping(val ? [val] : []);
+            }}
+            className="px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            <option value="">Keine Gruppierung</option>
+            {GROUPABLE_COLUMNS.map((col) => (
+              <option key={col.id} value={col.id}>
+                {col.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
           onClick={() => setShowColumnPicker((v) => !v)}
           className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -452,20 +525,30 @@ export function InvoiceTable({
           <thead className="bg-gray-50">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                    style={{ width: header.getSize() }}
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                  </th>
-                ))}
+                {hg.headers.map((header) => {
+                  const canSort = header.column.getCanSort();
+                  return (
+                    <th
+                      key={header.id}
+                      className={`px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${canSort ? "cursor-pointer select-none hover:text-gray-700" : ""}`}
+                      style={{ width: header.getSize() }}
+                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                    >
+                      {header.isPlaceholder ? null : (
+                        <span className="flex items-center gap-1">
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {canSort && (
+                            header.column.getIsSorted() === "asc"
+                              ? <ArrowUp size={12} />
+                              : header.column.getIsSorted() === "desc"
+                                ? <ArrowDown size={12} />
+                                : <ArrowUpDown size={12} className="opacity-30" />
+                          )}
+                        </span>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             ))}
           </thead>
@@ -480,18 +563,54 @@ export function InvoiceTable({
                 </td>
               </tr>
             ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className={rowClassName(row.original, selectedIds.has(row.original.id))}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-3 py-2 whitespace-nowrap">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              table.getRowModel().rows.map((row) => {
+                if (row.getIsGrouped()) {
+                  // Group header row
+                  return (
+                    <tr
+                      key={row.id}
+                      className="bg-gray-100 hover:bg-gray-200 font-medium"
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td key={cell.id} className="px-3 py-2 whitespace-nowrap">
+                          {cell.getIsGrouped() ? (
+                            <button
+                              onClick={row.getToggleExpandedHandler()}
+                              className="flex items-center gap-1 text-gray-700"
+                            >
+                              {row.getIsExpanded()
+                                ? <ChevronDown size={14} />
+                                : <ChevronRight size={14} />}
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                              <span className="text-xs text-gray-500 font-normal ml-1">
+                                ({row.subRows.length})
+                              </span>
+                            </button>
+                          ) : cell.getIsAggregated() ? (
+                            flexRender(
+                              cell.column.columnDef.aggregatedCell ?? cell.column.columnDef.cell,
+                              cell.getContext()
+                            )
+                          ) : null}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                }
+
+                return (
+                  <tr
+                    key={row.id}
+                    className={rowClassName(row.original, selectedIds.has(row.original.id))}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="px-3 py-2 whitespace-nowrap">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
             )}
           </tbody>
           {sums && (

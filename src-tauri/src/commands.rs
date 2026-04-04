@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::db::AppDb;
 use crate::error::AppError;
@@ -49,12 +49,37 @@ pub fn batch_update_status(
 }
 
 #[tauri::command]
+pub fn batch_mark_bezahlt(
+    db: State<'_, AppDb>,
+    ids: Vec<i64>,
+    source: String,
+) -> Result<Vec<Invoice>, AppError> {
+    db.batch_mark_bezahlt(&ids, &source)
+}
+
+#[tauri::command]
 pub fn batch_mark_eingereicht(
     db: State<'_, AppDb>,
     ids: Vec<i64>,
     date: String,
 ) -> Result<Vec<Invoice>, AppError> {
-    db.batch_mark_eingereicht(&ids, &date)
+    let result = db.batch_mark_eingereicht(&ids, &date)?;
+
+    // Try to remove "WF: Einreichen" tag from linked Paperless documents
+    if let Ok(client) = build_paperless_client(&db) {
+        if let Ok(tags) = client.get_tags() {
+            if let Some(wf_tag) = tags.iter().find(|t| t.name == "WF: Einreichen") {
+                let tag_id = wf_tag.id;
+                if let Ok(doc_ids) = db.get_paperless_doc_ids_for_invoices(&ids) {
+                    for doc_id in doc_ids {
+                        let _ = client.remove_tag_from_document(doc_id, tag_id);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -110,6 +135,46 @@ fn build_paperless_client(db: &AppDb) -> Result<PaperlessClient, AppError> {
         ));
     }
     Ok(PaperlessClient::new(&url, &token))
+}
+
+#[tauri::command]
+pub fn paperless_download_invoices(
+    app: tauri::AppHandle,
+    db: State<'_, AppDb>,
+    ids: Vec<i64>,
+) -> Result<PaperlessDownloadResult, AppError> {
+    let client = build_paperless_client(&db)?;
+    let doc_ids = db.get_paperless_doc_ids_for_invoices(&ids)?;
+
+    if doc_ids.is_empty() {
+        return Err(AppError::Validation(
+            "Keine der ausgewählten Rechnungen hat ein verknüpftes Paperless-Dokument".into(),
+        ));
+    }
+
+    let downloads_dir = dirs::download_dir().ok_or_else(|| {
+        AppError::Validation("Downloads-Ordner konnte nicht ermittelt werden".into())
+    })?;
+
+    let total = doc_ids.len() as i64;
+    let mut downloaded = 0i64;
+    let mut errors = Vec::new();
+
+    for (i, doc_id) in doc_ids.iter().enumerate() {
+        let _ = app.emit("download-progress", serde_json::json!({
+            "current": i + 1,
+            "total": total,
+            "doc_id": doc_id,
+            "phase": "downloading",
+        }));
+
+        match client.download_document(*doc_id, &downloads_dir) {
+            Ok(_) => downloaded += 1,
+            Err(e) => errors.push(format!("Dokument #{}: {}", doc_id, e)),
+        }
+    }
+
+    Ok(PaperlessDownloadResult { downloaded, errors })
 }
 
 #[tauri::command]

@@ -27,3 +27,5 @@ calamine = { version = "0.33", features = ["dates"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 reqwest = { version = "0.12", features = ["blocking", "json"] }
+dirs = "6"
+urlencoding = "2"

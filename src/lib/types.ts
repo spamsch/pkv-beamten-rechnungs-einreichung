@@ -120,6 +120,11 @@ export interface PaperlessImportResult {
   errors: string[];
 }
 
+export interface PaperlessDownloadResult {
+  downloaded: number;
+  errors: string[];
+}
+
 export type InvoiceStatus =
   | "neu"
   | "teilweise_eingereicht"

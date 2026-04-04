@@ -75,6 +75,18 @@ export function useBatchUpdate() {
   });
 }
 
+export function useBatchMarkBezahlt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, source }: { ids: number[]; source: string }) =>
+      api.batchMarkBezahlt(ids, source),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
 export function useBatchMarkEingereicht() {
   const qc = useQueryClient();
   return useMutation({
@@ -84,6 +96,12 @@ export function useBatchMarkEingereicht() {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
+  });
+}
+
+export function usePaperlessDownload() {
+  return useMutation({
+    mutationFn: (ids: number[]) => api.paperlessDownloadInvoices(ids),
   });
 }
 

@@ -134,6 +134,12 @@ pub struct PaperlessImportResult {
     pub errors: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct PaperlessDownloadResult {
+    pub downloaded: i64,
+    pub errors: Vec<String>,
+}
+
 /// Computed fields based on person percentages and invoice amounts
 pub struct ComputedFields {
     pub beihilfe_zu_bezahlen: f64,

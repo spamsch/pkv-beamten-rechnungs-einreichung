@@ -420,6 +420,72 @@ impl AppDb {
         Ok(result)
     }
 
+    pub fn batch_mark_bezahlt(&self, ids: &[i64], source: &str) -> Result<Vec<Invoice>, AppError> {
+        let (bezahlt_field, zu_bezahlen_field) = match source {
+            "beihilfe" => ("beihilfe_bezahlt", "beihilfe_zu_bezahlen"),
+            "debeka" => ("debeka_bezahlt", "debeka_zu_bezahlen"),
+            _ => return Err(AppError::Validation(format!("Invalid source '{}'", source))),
+        };
+
+        let conn = self.conn.lock().unwrap();
+        for id in ids {
+            let sql = format!(
+                "UPDATE invoices SET {} = {}, updated_at = datetime('now') WHERE id = ?1",
+                bezahlt_field, zu_bezahlen_field
+            );
+            conn.execute(&sql, params![id])?;
+        }
+        drop(conn);
+
+        // Recompute derived fields for affected invoices
+        for id in ids {
+            let invoice = self.get_invoice(*id)?;
+            let person = self.get_person(&invoice.person_id)?;
+            let computed = compute_derived_fields(
+                invoice.betrag,
+                invoice.mahngebuehr,
+                person.beihilfe_percent,
+                person.debeka_percent,
+                invoice.beihilfe_bezahlt,
+                invoice.debeka_bezahlt,
+            );
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE invoices SET beihilfe_zu_bezahlen = ?1, debeka_zu_bezahlen = ?2, \
+                 zu_ueberweisen = ?3, differenz = ?4 WHERE id = ?5",
+                params![
+                    computed.beihilfe_zu_bezahlen,
+                    computed.debeka_zu_bezahlen,
+                    computed.zu_ueberweisen,
+                    computed.differenz,
+                    id,
+                ],
+            )?;
+        }
+
+        let mut result = Vec::new();
+        for id in ids {
+            result.push(self.get_invoice(*id)?);
+        }
+        Ok(result)
+    }
+
+    pub fn get_paperless_doc_ids_for_invoices(&self, ids: &[i64]) -> Result<Vec<i64>, AppError> {
+        let conn = self.conn.lock().unwrap();
+        let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            "SELECT paperless_doc_id FROM invoices WHERE id IN ({}) AND paperless_doc_id IS NOT NULL",
+            placeholders.join(",")
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> =
+            ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+        let doc_ids = stmt
+            .query_map(params.as_slice(), |row| row.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(doc_ids)
+    }
+
     pub fn batch_mark_eingereicht(&self, ids: &[i64], date: &str) -> Result<Vec<Invoice>, AppError> {
         let conn = self.conn.lock().unwrap();
         for id in ids {

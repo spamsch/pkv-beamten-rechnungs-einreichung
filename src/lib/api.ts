@@ -11,6 +11,7 @@ import type {
   PaperlessTag,
   PaperlessDocument,
   PaperlessImportResult,
+  PaperlessDownloadResult,
 } from "./types";
 
 export const api = {
@@ -37,6 +38,9 @@ export const api = {
   batchMarkEingereicht: (ids: number[], date: string) =>
     invoke<Invoice[]>("batch_mark_eingereicht", { ids, date }),
 
+  batchMarkBezahlt: (ids: number[], source: string) =>
+    invoke<Invoice[]>("batch_mark_bezahlt", { ids, source }),
+
   getDashboardStats: () => invoke<DashboardStats>("get_dashboard_stats"),
 
   importExcel: (filePath: string) =>
@@ -57,6 +61,9 @@ export const api = {
       documentIds,
       tagIds,
     }),
+
+  paperlessDownloadInvoices: (ids: number[]) =>
+    invoke<PaperlessDownloadResult>("paperless_download_invoices", { ids }),
 
   getNotes: () => invoke<string>("get_notes"),
 

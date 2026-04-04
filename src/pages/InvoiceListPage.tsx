@@ -1,6 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { PlusCircle, CheckSquare, ClipboardCopy } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
+import { PlusCircle, CheckSquare, ClipboardCopy, Download } from "lucide-react";
 import type { Invoice, InvoiceFilter } from "../lib/types";
 import { deriveStatus, STATUS_CONFIG } from "../lib/types";
 import { todayISO, formatDate, formatEur } from "../lib/format";
@@ -10,6 +11,8 @@ import {
   useDeleteInvoice,
   useBatchUpdate,
   useBatchMarkEingereicht,
+  useBatchMarkBezahlt,
+  usePaperlessDownload,
 } from "../hooks/useInvoices";
 import { FilterBar } from "../components/FilterBar";
 import { InvoiceTable } from "../components/InvoiceTable";
@@ -27,15 +30,26 @@ export function InvoiceListPage() {
   const deleteMutation = useDeleteInvoice();
   const batchMutation = useBatchUpdate();
   const batchEingereichMutation = useBatchMarkEingereicht();
+  const batchBezahltMutation = useBatchMarkBezahlt();
+  const downloadMutation = usePaperlessDownload();
   const [copied, setCopied] = useState(false);
+  const [downloadResult, setDownloadResult] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number } | null>(null);
+
+  useEffect(() => {
+    const unlisten = listen<{ current: number; total: number }>("download-progress", (event) => {
+      setDownloadProgress({ current: event.payload.current, total: event.payload.total });
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, []);
 
   const personMap = new Map(persons.map((p) => [p.id, p.name]));
 
   const copyAsMarkdown = useCallback(() => {
-    const headers = ["#", "Person", "Arzt", "Datum", "Re-Nr.", "Betrag", "Status", "BH eingereicht", "BH soll", "BH ist", "DK soll", "DK ist", "Diff."];
+    const headers = ["Paperless Id", "Person", "Arzt", "Datum", "Re-Nr.", "Betrag", "Status", "BH eingereicht", "BH soll", "BH ist", "DK soll", "DK ist", "Diff."];
     const sep = headers.map(() => "---");
     const rows = invoices.map((inv: Invoice) => [
-      String(inv.id),
+      inv.paperless_doc_id != null ? String(inv.paperless_doc_id) : "—",
       personMap.get(inv.person_id) ?? inv.person_id,
       inv.arzt,
       formatDate(inv.datum),
@@ -123,6 +137,30 @@ export function InvoiceListPage() {
             </button>
             <button
               onClick={() =>
+                batchBezahltMutation.mutate(
+                  { ids: Array.from(selectedIds), source: "beihilfe" },
+                  { onSuccess: () => setSelectedIds(new Set()) }
+                )
+              }
+              disabled={batchBezahltMutation.isPending || batchMutation.isPending}
+              className="px-3 py-1 text-xs font-medium bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              BH überwiesen
+            </button>
+            <button
+              onClick={() =>
+                batchBezahltMutation.mutate(
+                  { ids: Array.from(selectedIds), source: "debeka" },
+                  { onSuccess: () => setSelectedIds(new Set()) }
+                )
+              }
+              disabled={batchBezahltMutation.isPending || batchMutation.isPending}
+              className="px-3 py-1 text-xs font-medium bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              DK überwiesen
+            </button>
+            <button
+              onClick={() =>
                 handleBatch("ueberwiesen_datum", todayISO())
               }
               disabled={batchMutation.isPending}
@@ -137,6 +175,41 @@ export function InvoiceListPage() {
             >
               Abschließen
             </button>
+            <button
+              onClick={() => {
+                setDownloadResult(null);
+                setDownloadProgress(null);
+                downloadMutation.mutate(Array.from(selectedIds), {
+                  onSuccess: (result) => {
+                    setDownloadProgress(null);
+                    const msg =
+                      result.downloaded > 0
+                        ? `${result.downloaded} Dokument${result.downloaded !== 1 ? "e" : ""} heruntergeladen`
+                        : "";
+                    const errMsg =
+                      result.errors.length > 0
+                        ? result.errors.join("; ")
+                        : "";
+                    setDownloadResult([msg, errMsg].filter(Boolean).join(" — "));
+                    setTimeout(() => setDownloadResult(null), 8000);
+                  },
+                  onError: (err) => {
+                    setDownloadProgress(null);
+                    setDownloadResult(String(err));
+                    setTimeout(() => setDownloadResult(null), 5000);
+                  },
+                });
+              }}
+              disabled={downloadMutation.isPending}
+              className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              <Download size={12} />
+              {downloadMutation.isPending && downloadProgress
+                ? `${downloadProgress.current}/${downloadProgress.total}…`
+                : downloadMutation.isPending
+                  ? "Lädt…"
+                  : "Paperless Download"}
+            </button>
           </div>
           <button
             onClick={() => setSelectedIds(new Set())}
@@ -144,6 +217,26 @@ export function InvoiceListPage() {
           >
             Auswahl aufheben
           </button>
+        </div>
+      )}
+
+      {downloadMutation.isPending && downloadProgress && (
+        <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm text-blue-800">
+          <div className="flex items-center gap-3">
+            <span>Dokument {downloadProgress.current} von {downloadProgress.total} wird heruntergeladen…</span>
+            <div className="flex-1 h-2 bg-blue-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                style={{ width: `${(downloadProgress.current / downloadProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {downloadResult && (
+        <div className="p-3 bg-green-50 rounded-lg border border-green-200 text-sm text-green-800">
+          {downloadResult}
         </div>
       )}
 

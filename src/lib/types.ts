@@ -28,6 +28,7 @@ export interface Invoice {
   notes: string;
   created_at: string;
   updated_at: string;
+  widerspruch_eingelegt: string | null;
 }
 
 export interface InvoiceInput {
@@ -46,6 +47,7 @@ export interface InvoiceInput {
   is_final?: boolean;
   paperless_doc_id?: number | null;
   notes?: string;
+  widerspruch_eingelegt?: string | null;
 }
 
 export interface InvoiceFilter {
@@ -131,6 +133,7 @@ export type InvoiceStatus =
   | "eingereicht"
   | "teilweise_bezahlt"
   | "bezahlt"
+  | "widerspruch"
   | "ueberwiesen"
   | "abgeschlossen"
   | "ueberfaellig";
@@ -156,6 +159,11 @@ export const STATUS_CONFIG: Record<
     bg: "bg-orange-100",
   },
   bezahlt: { label: "Bezahlt", color: "text-green-700", bg: "bg-green-100" },
+  widerspruch: {
+    label: "Widerspruch",
+    color: "text-rose-700",
+    bg: "bg-rose-100",
+  },
   ueberwiesen: {
     label: "Überwiesen",
     color: "text-teal-700",
@@ -176,6 +184,7 @@ export const STATUS_CONFIG: Record<
 export function deriveStatus(invoice: Invoice): InvoiceStatus {
   if (invoice.is_final) return "abgeschlossen";
   if (invoice.ueberwiesen_datum) return "ueberwiesen";
+  if (invoice.widerspruch_eingelegt) return "widerspruch";
   if (invoice.beihilfe_bezahlt > 0 && invoice.debeka_bezahlt > 0)
     return "bezahlt";
   if (invoice.beihilfe_bezahlt > 0 || invoice.debeka_bezahlt > 0)
@@ -191,4 +200,55 @@ export function isOverdue(invoice: Invoice): boolean {
   if (invoice.is_final) return false;
   if (!invoice.zahlbar_bis) return false;
   return invoice.zahlbar_bis < new Date().toISOString().slice(0, 10);
+}
+
+export const NEXT_STEP_LABELS = [
+  "Einreichen",
+  "BH einreichen",
+  "DK einreichen",
+  "Warten auf BH",
+  "Warten auf DK",
+  "Warten auf BH + DK",
+  "Widerspruch klären",
+  "Überweisen",
+  "Fertig markieren",
+] as const;
+
+export type NextStepLabel = (typeof NEXT_STEP_LABELS)[number] | "—";
+
+export function deriveNextStep(invoice: Invoice): { label: NextStepLabel; color: string } {
+  if (invoice.is_final) return { label: "—", color: "text-gray-400" };
+  if (invoice.widerspruch_eingelegt && !invoice.ueberwiesen_datum)
+    return { label: "Widerspruch klären", color: "text-rose-600" };
+
+  const bhOffen = invoice.beihilfe_bezahlt < invoice.beihilfe_zu_bezahlen;
+  const dkOffen = invoice.debeka_bezahlt < invoice.debeka_zu_bezahlen;
+
+  if (invoice.ueberwiesen_datum) {
+    if (bhOffen && dkOffen) return { label: "Warten auf BH + DK", color: "text-amber-600" };
+    if (bhOffen) return { label: "Warten auf BH", color: "text-amber-600" };
+    if (dkOffen) return { label: "Warten auf DK", color: "text-amber-600" };
+    return { label: "Fertig markieren", color: "text-emerald-600" };
+  }
+
+  if (invoice.beihilfe_bezahlt > 0 && invoice.debeka_bezahlt > 0)
+    return { label: "Überweisen", color: "text-violet-600" };
+
+  if (invoice.beihilfe_bezahlt > 0 || invoice.debeka_bezahlt > 0) {
+    if (bhOffen) return { label: "Warten auf BH", color: "text-amber-600" };
+    if (dkOffen) return { label: "Warten auf DK", color: "text-amber-600" };
+    return { label: "Überweisen", color: "text-violet-600" };
+  }
+
+  if (invoice.beihilfe_eingereicht && invoice.debeka_eingereicht) {
+    if (bhOffen && dkOffen) return { label: "Warten auf BH + DK", color: "text-amber-600" };
+    if (bhOffen) return { label: "Warten auf BH", color: "text-amber-600" };
+    if (dkOffen) return { label: "Warten auf DK", color: "text-amber-600" };
+    return { label: "Überweisen", color: "text-violet-600" };
+  }
+  if (invoice.beihilfe_eingereicht && !invoice.debeka_eingereicht)
+    return { label: "DK einreichen", color: "text-blue-600" };
+  if (!invoice.beihilfe_eingereicht && invoice.debeka_eingereicht)
+    return { label: "BH einreichen", color: "text-blue-600" };
+  return { label: "Einreichen", color: "text-blue-600" };
 }

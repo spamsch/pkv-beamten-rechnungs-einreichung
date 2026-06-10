@@ -9,6 +9,7 @@ import { ImportPage } from "./pages/ImportPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { PaperlessImportPage } from "./pages/PaperlessImportPage";
 import { NotesPage } from "./pages/NotesPage";
+import { SumMatchPage } from "./pages/SumMatchPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +34,7 @@ function App() {
             <Route path="/import" element={<ImportPage />} />
             <Route path="/import/paperless" element={<PaperlessImportPage />} />
             <Route path="/notes" element={<NotesPage />} />
+            <Route path="/match" element={<SumMatchPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>

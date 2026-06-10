@@ -1,11 +1,13 @@
 import { Search } from "lucide-react";
-import type { Person, InvoiceFilter, InvoiceStatus } from "../lib/types";
-import { STATUS_CONFIG } from "../lib/types";
+import type { Person, InvoiceFilter, InvoiceStatus, NextStepLabel } from "../lib/types";
+import { STATUS_CONFIG, NEXT_STEP_LABELS } from "../lib/types";
 
 interface FilterBarProps {
   filter: InvoiceFilter;
   onChange: (filter: InvoiceFilter) => void;
   persons: Person[];
+  nextStep: NextStepLabel | null;
+  onNextStepChange: (value: NextStepLabel | null) => void;
 }
 
 const statusOptions: { value: InvoiceStatus | ""; label: string }[] = [
@@ -16,7 +18,7 @@ const statusOptions: { value: InvoiceStatus | ""; label: string }[] = [
   })),
 ];
 
-export function FilterBar({ filter, onChange, persons }: FilterBarProps) {
+export function FilterBar({ filter, onChange, persons, nextStep, onNextStepChange }: FilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 p-4 bg-white rounded-lg border border-gray-200">
       <div className="relative">
@@ -58,6 +60,21 @@ export function FilterBar({ filter, onChange, persons }: FilterBarProps) {
         {statusOptions.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={nextStep ?? ""}
+        onChange={(e) =>
+          onNextStepChange((e.target.value || null) as NextStepLabel | null)
+        }
+        className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="">Alle nächsten Schritte</option>
+        {NEXT_STEP_LABELS.map((label) => (
+          <option key={label} value={label}>
+            {label}
           </option>
         ))}
       </select>

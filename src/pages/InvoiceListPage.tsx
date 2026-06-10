@@ -2,8 +2,8 @@ import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { PlusCircle, CheckSquare, ClipboardCopy, Download } from "lucide-react";
-import type { Invoice, InvoiceFilter } from "../lib/types";
-import { deriveStatus, STATUS_CONFIG } from "../lib/types";
+import type { Invoice, InvoiceFilter, NextStepLabel } from "../lib/types";
+import { deriveStatus, deriveNextStep, STATUS_CONFIG } from "../lib/types";
 import { todayISO, formatDate, formatEur } from "../lib/format";
 import {
   useInvoices,
@@ -20,13 +20,17 @@ import { InvoiceTable } from "../components/InvoiceTable";
 export function InvoiceListPage() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<InvoiceFilter>({ hide_final: true });
+  const [nextStepFilter, setNextStepFilter] = useState<NextStepLabel | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(
     () => new Set(["rechnungs_nummer", "beihilfe_zu_bezahlen", "debeka_zu_bezahlen"])
   );
 
   const { data: persons = [] } = usePersons();
-  const { data: invoices = [], isLoading } = useInvoices(filter);
+  const { data: rawInvoices = [], isLoading } = useInvoices(filter);
+  const invoices = nextStepFilter
+    ? rawInvoices.filter((inv: Invoice) => deriveNextStep(inv).label === nextStepFilter)
+    : rawInvoices;
   const deleteMutation = useDeleteInvoice();
   const batchMutation = useBatchUpdate();
   const batchEingereichMutation = useBatchMarkEingereicht();
@@ -45,10 +49,13 @@ export function InvoiceListPage() {
 
   const personMap = new Map(persons.map((p) => [p.id, p.name]));
 
-  const copyAsMarkdown = useCallback(() => {
+  const copyAsMarkdown = useCallback((onlySelected = false) => {
+    const source = onlySelected
+      ? invoices.filter((inv: Invoice) => inv.id != null && selectedIds.has(inv.id))
+      : invoices;
     const headers = ["Paperless Id", "Person", "Arzt", "Datum", "Re-Nr.", "Betrag", "Status", "BH eingereicht", "BH soll", "BH ist", "DK soll", "DK ist", "Diff."];
     const sep = headers.map(() => "---");
-    const rows = invoices.map((inv: Invoice) => [
+    const rows = source.map((inv: Invoice) => [
       inv.paperless_doc_id != null ? String(inv.paperless_doc_id) : "—",
       personMap.get(inv.person_id) ?? inv.person_id,
       inv.arzt,
@@ -72,7 +79,7 @@ export function InvoiceListPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [invoices, personMap]);
+  }, [invoices, personMap, selectedIds]);
 
   const handleBatch = (field: string, value: string, ids?: number[]) => {
     const targetIds = ids ?? Array.from(selectedIds);
@@ -96,7 +103,13 @@ export function InvoiceListPage() {
         </button>
       </div>
 
-      <FilterBar filter={filter} onChange={setFilter} persons={persons} />
+      <FilterBar
+        filter={filter}
+        onChange={setFilter}
+        persons={persons}
+        nextStep={nextStepFilter}
+        onNextStepChange={setNextStepFilter}
+      />
 
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -258,13 +271,22 @@ export function InvoiceListPage() {
       <div className="flex items-center gap-3 text-sm text-gray-500">
         <span>{invoices.length} Rechnung{invoices.length !== 1 ? "en" : ""}</span>
         <button
-          onClick={copyAsMarkdown}
+          onClick={() => copyAsMarkdown()}
           disabled={invoices.length === 0}
           className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40"
         >
           <ClipboardCopy size={14} />
           {copied ? "Kopiert!" : "Als Markdown kopieren"}
         </button>
+        {selectedIds.size > 0 && (
+          <button
+            onClick={() => copyAsMarkdown(true)}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            <ClipboardCopy size={14} />
+            {copied ? "Kopiert!" : `Auswahl als Markdown (${selectedIds.size})`}
+          </button>
+        )}
       </div>
     </div>
   );

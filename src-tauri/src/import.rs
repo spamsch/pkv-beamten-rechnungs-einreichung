@@ -161,6 +161,7 @@ fn parse_row(
             .map(|s| s == "1" || s.to_lowercase() == "ja" || s.to_lowercase() == "true" || s.to_lowercase() == "x"),
         paperless_doc_id: get_f64("paperless").or_else(|| get_f64("paperless_doc_id")).map(|f| f as i64),
         notes: get_str("notizen").or_else(|| get_str("notes")).or_else(|| get_str("bemerkung")),
+        widerspruch_eingelegt: get_date("widerspruch").or_else(|| get_date("widerspruch_eingelegt")),
     })
 }
 

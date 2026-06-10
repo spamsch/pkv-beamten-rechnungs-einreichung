@@ -32,6 +32,7 @@ pub struct Invoice {
     pub notes: String,
     pub created_at: String,
     pub updated_at: String,
+    pub widerspruch_eingelegt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +52,7 @@ pub struct InvoiceInput {
     pub is_final: Option<bool>,
     pub paperless_doc_id: Option<i64>,
     pub notes: Option<String>,
+    pub widerspruch_eingelegt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

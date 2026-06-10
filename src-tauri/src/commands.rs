@@ -288,6 +288,7 @@ pub fn paperless_import_documents(
             is_final: None,
             paperless_doc_id: Some(doc.id),
             notes: None,
+            widerspruch_eingelegt: None,
         };
 
         match db.create_invoice(&input) {

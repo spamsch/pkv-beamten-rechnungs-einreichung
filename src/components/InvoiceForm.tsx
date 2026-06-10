@@ -28,6 +28,7 @@ function emptyForm(persons: Person[]): InvoiceInput {
     is_final: false,
     paperless_doc_id: null,
     notes: "",
+    widerspruch_eingelegt: null,
   };
 }
 
@@ -48,6 +49,7 @@ function invoiceToInput(inv: Invoice): InvoiceInput {
     is_final: inv.is_final,
     paperless_doc_id: inv.paperless_doc_id,
     notes: inv.notes,
+    widerspruch_eingelegt: inv.widerspruch_eingelegt,
   };
 }
 
@@ -309,6 +311,13 @@ export function InvoiceForm({
             value={form.ueberwiesen_datum}
             onChange={(v) => set("ueberwiesen_datum", v)}
           />
+          <DateField
+            label="Widerspruch eingelegt"
+            value={form.widerspruch_eingelegt}
+            onChange={(v) => set("widerspruch_eingelegt", v)}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Paperless Dokument-ID

@@ -14,7 +14,7 @@ import {
 import { Pencil, Trash2, ExternalLink, Columns3, ArrowRightLeft, ArrowUp, ArrowDown, ArrowUpDown, Group, ChevronRight, ChevronDown } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Invoice, Person } from "../lib/types";
-import { deriveStatus, isOverdue } from "../lib/types";
+import { deriveStatus, deriveNextStep, isOverdue } from "../lib/types";
 import { formatDate, formatEur } from "../lib/format";
 import { StatusBadge } from "./StatusBadge";
 import { useSettings } from "../hooks/usePaperless";
@@ -61,41 +61,6 @@ const GROUPABLE_COLUMNS: { id: string; label: string }[] = [
   { id: "beihilfe_eingereicht", label: "BH eingereicht" },
   { id: "ueberwiesen", label: "Überwiesen" },
 ];
-
-function deriveNextStep(invoice: Invoice): { label: string; color: string } {
-  if (invoice.is_final) return { label: "—", color: "text-gray-400" };
-
-  const bhOffen = invoice.beihilfe_bezahlt < invoice.beihilfe_zu_bezahlen;
-  const dkOffen = invoice.debeka_bezahlt < invoice.debeka_zu_bezahlen;
-
-  if (invoice.ueberwiesen_datum) {
-    if (bhOffen && dkOffen) return { label: "Warten auf BH + DK", color: "text-amber-600" };
-    if (bhOffen) return { label: "Warten auf BH", color: "text-amber-600" };
-    if (dkOffen) return { label: "Warten auf DK", color: "text-amber-600" };
-    return { label: "Fertig markieren", color: "text-emerald-600" };
-  }
-
-  if (invoice.beihilfe_bezahlt > 0 && invoice.debeka_bezahlt > 0)
-    return { label: "Überweisen", color: "text-violet-600" };
-
-  if (invoice.beihilfe_bezahlt > 0 || invoice.debeka_bezahlt > 0) {
-    if (bhOffen) return { label: "Warten auf BH", color: "text-amber-600" };
-    if (dkOffen) return { label: "Warten auf DK", color: "text-amber-600" };
-    return { label: "Überweisen", color: "text-violet-600" };
-  }
-
-  if (invoice.beihilfe_eingereicht && invoice.debeka_eingereicht) {
-    if (bhOffen && dkOffen) return { label: "Warten auf BH + DK", color: "text-amber-600" };
-    if (bhOffen) return { label: "Warten auf BH", color: "text-amber-600" };
-    if (dkOffen) return { label: "Warten auf DK", color: "text-amber-600" };
-    return { label: "Überweisen", color: "text-violet-600" };
-  }
-  if (invoice.beihilfe_eingereicht && !invoice.debeka_eingereicht)
-    return { label: "DK einreichen", color: "text-blue-600" };
-  if (!invoice.beihilfe_eingereicht && invoice.debeka_eingereicht)
-    return { label: "BH einreichen", color: "text-blue-600" };
-  return { label: "Einreichen", color: "text-blue-600" };
-}
 
 function rowClassName(invoice: Invoice, isSelected: boolean): string {
   if (isSelected) return "bg-blue-50 hover:bg-blue-100";

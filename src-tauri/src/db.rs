@@ -23,6 +23,20 @@ impl AppDb {
         conn.execute_batch(m1)?;
         let m2 = include_str!("../migrations/002_settings.sql");
         conn.execute_batch(m2)?;
+
+        // Migration 003: ALTER TABLE — gated by column check (SQLite lacks IF NOT EXISTS)
+        let has_widerspruch_col: bool = {
+            let mut stmt = conn.prepare("PRAGMA table_info(invoices)")?;
+            let cols: Vec<String> = stmt
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<Result<_, _>>()?;
+            cols.iter().any(|c| c == "widerspruch_eingelegt")
+        };
+        if !has_widerspruch_col {
+            let m3 = include_str!("../migrations/003_widerspruch.sql");
+            conn.execute_batch(m3)?;
+        }
+
         Ok(())
     }
 
@@ -116,18 +130,22 @@ impl AppDb {
             notes: row.get(19)?,
             created_at: row.get(20)?,
             updated_at: row.get(21)?,
+            widerspruch_eingelegt: row.get(22)?,
         })
     }
 
+    const INVOICE_SELECT_COLS: &'static str =
+        "id, person_id, arzt, datum, zahlbar_bis, rechnungs_nummer, \
+         betrag, mahngebuehr, beihilfe_eingereicht, debeka_eingereicht, \
+         beihilfe_zu_bezahlen, debeka_zu_bezahlen, beihilfe_bezahlt, debeka_bezahlt, \
+         zu_ueberweisen, ueberwiesen_datum, differenz, is_final, \
+         paperless_doc_id, notes, created_at, updated_at, widerspruch_eingelegt";
+
     pub fn get_invoices(&self, filter: &InvoiceFilter) -> Result<Vec<Invoice>, AppError> {
         let conn = self.conn.lock().unwrap();
-        let mut sql = String::from(
-            "SELECT id, person_id, arzt, datum, zahlbar_bis, rechnungs_nummer, \
-             betrag, mahngebuehr, beihilfe_eingereicht, debeka_eingereicht, \
-             beihilfe_zu_bezahlen, debeka_zu_bezahlen, beihilfe_bezahlt, debeka_bezahlt, \
-             zu_ueberweisen, ueberwiesen_datum, differenz, is_final, \
-             paperless_doc_id, notes, created_at, updated_at \
-             FROM invoices WHERE 1=1",
+        let mut sql = format!(
+            "SELECT {} FROM invoices WHERE 1=1",
+            Self::INVOICE_SELECT_COLS
         );
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
@@ -140,10 +158,12 @@ impl AppDb {
             if !search.is_empty() {
                 let like = format!("%{}%", search);
                 let idx = param_values.len() + 1;
+                let idx_exact = idx + 1;
                 sql.push_str(&format!(
-                    " AND (arzt LIKE ?{idx} OR rechnungs_nummer LIKE ?{idx} OR notes LIKE ?{idx})"
+                    " AND (arzt LIKE ?{idx} OR rechnungs_nummer LIKE ?{idx} OR notes LIKE ?{idx} OR CAST(id AS TEXT) = ?{idx_exact})"
                 ));
                 param_values.push(Box::new(like));
+                param_values.push(Box::new(search.clone()));
             }
         }
 
@@ -154,23 +174,31 @@ impl AppDb {
         if let Some(ref status) = filter.status {
             match status.as_str() {
                 "neu" => sql.push_str(
-                    " AND beihilfe_eingereicht IS NULL AND debeka_eingereicht IS NULL AND is_final = 0",
+                    " AND beihilfe_eingereicht IS NULL AND debeka_eingereicht IS NULL \
+                     AND widerspruch_eingelegt IS NULL AND is_final = 0",
                 ),
                 "teilweise_eingereicht" => sql.push_str(
                     " AND ((beihilfe_eingereicht IS NOT NULL AND debeka_eingereicht IS NULL) \
-                     OR (beihilfe_eingereicht IS NULL AND debeka_eingereicht IS NOT NULL)) AND is_final = 0",
+                     OR (beihilfe_eingereicht IS NULL AND debeka_eingereicht IS NOT NULL)) \
+                     AND widerspruch_eingelegt IS NULL AND is_final = 0",
                 ),
                 "eingereicht" => sql.push_str(
                     " AND beihilfe_eingereicht IS NOT NULL AND debeka_eingereicht IS NOT NULL \
-                     AND (beihilfe_bezahlt = 0 OR debeka_bezahlt = 0) AND is_final = 0",
+                     AND (beihilfe_bezahlt = 0 OR debeka_bezahlt = 0) \
+                     AND widerspruch_eingelegt IS NULL AND is_final = 0",
                 ),
                 "teilweise_bezahlt" => sql.push_str(
                     " AND ((beihilfe_bezahlt > 0 AND debeka_bezahlt = 0) \
-                     OR (beihilfe_bezahlt = 0 AND debeka_bezahlt > 0)) AND is_final = 0",
+                     OR (beihilfe_bezahlt = 0 AND debeka_bezahlt > 0)) \
+                     AND widerspruch_eingelegt IS NULL AND is_final = 0",
                 ),
                 "bezahlt" => sql.push_str(
                     " AND beihilfe_bezahlt > 0 AND debeka_bezahlt > 0 \
-                     AND ueberwiesen_datum IS NULL AND is_final = 0",
+                     AND ueberwiesen_datum IS NULL \
+                     AND widerspruch_eingelegt IS NULL AND is_final = 0",
+                ),
+                "widerspruch" => sql.push_str(
+                    " AND widerspruch_eingelegt IS NOT NULL AND is_final = 0",
                 ),
                 "ueberwiesen" => sql.push_str(
                     " AND ueberwiesen_datum IS NOT NULL AND is_final = 0",
@@ -204,7 +232,7 @@ impl AppDb {
             "betrag", "mahngebuehr", "beihilfe_eingereicht", "debeka_eingereicht",
             "beihilfe_zu_bezahlen", "debeka_zu_bezahlen", "beihilfe_bezahlt",
             "debeka_bezahlt", "zu_ueberweisen", "ueberwiesen_datum", "differenz",
-            "is_final", "created_at", "updated_at",
+            "is_final", "widerspruch_eingelegt", "created_at", "updated_at",
         ];
         let sort_col = if allowed_columns.contains(&sort_by) {
             sort_by
@@ -225,18 +253,13 @@ impl AppDb {
 
     pub fn get_invoice(&self, id: i64) -> Result<Invoice, AppError> {
         let conn = self.conn.lock().unwrap();
-        conn.query_row(
-            "SELECT id, person_id, arzt, datum, zahlbar_bis, rechnungs_nummer, \
-             betrag, mahngebuehr, beihilfe_eingereicht, debeka_eingereicht, \
-             beihilfe_zu_bezahlen, debeka_zu_bezahlen, beihilfe_bezahlt, debeka_bezahlt, \
-             zu_ueberweisen, ueberwiesen_datum, differenz, is_final, \
-             paperless_doc_id, notes, created_at, updated_at \
-             FROM invoices WHERE id = ?1",
-            params![id],
-            Self::row_to_invoice,
-        )
-        .optional()?
-        .ok_or_else(|| AppError::NotFound(format!("Invoice {} not found", id)))
+        let sql = format!(
+            "SELECT {} FROM invoices WHERE id = ?1",
+            Self::INVOICE_SELECT_COLS
+        );
+        conn.query_row(&sql, params![id], Self::row_to_invoice)
+            .optional()?
+            .ok_or_else(|| AppError::NotFound(format!("Invoice {} not found", id)))
     }
 
     pub fn create_invoice(&self, input: &InvoiceInput) -> Result<Invoice, AppError> {
@@ -261,8 +284,8 @@ impl AppDb {
              betrag, mahngebuehr, beihilfe_eingereicht, debeka_eingereicht, \
              beihilfe_zu_bezahlen, debeka_zu_bezahlen, beihilfe_bezahlt, debeka_bezahlt, \
              zu_ueberweisen, ueberwiesen_datum, differenz, is_final, \
-             paperless_doc_id, notes, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, datetime('now'))",
+             paperless_doc_id, notes, widerspruch_eingelegt, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, datetime('now'))",
             params![
                 input.person_id,
                 input.arzt.as_deref().unwrap_or(""),
@@ -283,6 +306,7 @@ impl AppDb {
                 input.is_final.unwrap_or(false) as i32,
                 input.paperless_doc_id,
                 input.notes.as_deref().unwrap_or(""),
+                input.widerspruch_eingelegt,
             ],
         )?;
 
@@ -318,8 +342,8 @@ impl AppDb {
              beihilfe_bezahlt = ?12, debeka_bezahlt = ?13, \
              zu_ueberweisen = ?14, ueberwiesen_datum = ?15, \
              differenz = ?16, is_final = ?17, paperless_doc_id = ?18, notes = ?19, \
-             updated_at = datetime('now') \
-             WHERE id = ?20",
+             widerspruch_eingelegt = ?20, updated_at = datetime('now') \
+             WHERE id = ?21",
             params![
                 input.person_id,
                 input.arzt.as_deref().unwrap_or(""),
@@ -340,6 +364,7 @@ impl AppDb {
                 input.is_final.unwrap_or(false) as i32,
                 input.paperless_doc_id,
                 input.notes.as_deref().unwrap_or(""),
+                input.widerspruch_eingelegt,
                 id,
             ],
         )?;
@@ -368,6 +393,7 @@ impl AppDb {
             "beihilfe_eingereicht",
             "debeka_eingereicht",
             "ueberwiesen_datum",
+            "widerspruch_eingelegt",
             "is_final",
         ];
         if !allowed_fields.contains(&input.field.as_str()) {

@@ -7,6 +7,7 @@ import {
   FileDown,
   StickyNote,
   Settings,
+  Calculator,
 } from "lucide-react";
 
 const navItems = [
@@ -15,6 +16,7 @@ const navItems = [
   { to: "/invoices/new", label: "Neue Rechnung", icon: PlusCircle },
   { to: "/import", label: "Excel Import", icon: Upload },
   { to: "/import/paperless", label: "Paperless Import", icon: FileDown },
+  { to: "/match", label: "Summen-Abgleich", icon: Calculator },
   { to: "/notes", label: "Notizen", icon: StickyNote },
 ];
 

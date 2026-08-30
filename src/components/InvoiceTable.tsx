@@ -11,7 +11,7 @@ import {
   type SortingState,
   type GroupingState,
 } from "@tanstack/react-table";
-import { Pencil, Trash2, ExternalLink, Columns3, ArrowRightLeft, ArrowUp, ArrowDown, ArrowUpDown, Group, ChevronRight, ChevronDown } from "lucide-react";
+import { Pencil, Trash2, ExternalLink, Columns3, ArrowRightLeft, ArrowUp, ArrowDown, ArrowUpDown, Group, ChevronRight, ChevronDown, StickyNote } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Invoice, Person } from "../lib/types";
 import { deriveStatus, deriveNextStep, isOverdue } from "../lib/types";
@@ -105,6 +105,7 @@ export function InvoiceTable({
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [grouping, setGrouping] = useState<GroupingState>([]);
+  const [showNotes, setShowNotes] = useState(false);
   const { data: settings } = useSettings();
   const paperlessUrl = settings?.paperless_url;
 
@@ -173,8 +174,15 @@ export function InvoiceTable({
           const notes = info.row.original.notes;
           return (
             <div>
-              <span>{info.getValue()}</span>
-              {notes && (
+              <span className="inline-flex items-center gap-1">
+                {info.getValue()}
+                {notes && !showNotes && (
+                  <span title={notes} className="text-gray-300 shrink-0">
+                    <StickyNote size={13} />
+                  </span>
+                )}
+              </span>
+              {notes && showNotes && (
                 <p className="text-xs text-gray-400 whitespace-normal break-words">{notes}</p>
               )}
             </div>
@@ -376,7 +384,7 @@ export function InvoiceTable({
         size: 100,
       }),
     ],
-    [personMap, selectedIds, onSelectionChange, navigate, onDelete, onMarkFinal, invoices, confirmDelete, paperlessUrl]
+    [personMap, selectedIds, onSelectionChange, navigate, onDelete, onMarkFinal, invoices, confirmDelete, paperlessUrl, showNotes]
   );
 
   const selectedInvoices = useMemo(
@@ -447,6 +455,17 @@ export function InvoiceTable({
             ))}
           </select>
         </div>
+        <button
+          onClick={() => setShowNotes((v) => !v)}
+          className={`flex items-center gap-1 px-2 py-1 text-xs font-medium border rounded-lg ${
+            showNotes
+              ? "text-blue-700 bg-blue-50 border-blue-300 hover:bg-blue-100"
+              : "text-gray-600 bg-white border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          <StickyNote size={14} />
+          Notizen
+        </button>
         <button
           onClick={() => setShowColumnPicker((v) => !v)}
           className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -537,7 +556,14 @@ export function InvoiceTable({
                       className="bg-gray-100 hover:bg-gray-200 font-medium"
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="px-3 py-2 whitespace-nowrap">
+                        <td
+                          key={cell.id}
+                          className={`px-3 py-2 ${
+                            cell.column.id === "arzt"
+                              ? "whitespace-normal break-words max-w-md"
+                              : "whitespace-nowrap"
+                          }`}
+                        >
                           {cell.getIsGrouped() ? (
                             <button
                               onClick={row.getToggleExpandedHandler()}
@@ -569,7 +595,14 @@ export function InvoiceTable({
                     className={rowClassName(row.original, selectedIds.has(row.original.id))}
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-3 py-2 whitespace-nowrap">
+                      <td
+                        key={cell.id}
+                        className={`px-3 py-2 ${
+                          cell.column.id === "arzt"
+                            ? "whitespace-normal break-words max-w-md"
+                            : "whitespace-nowrap"
+                        }`}
+                      >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}
